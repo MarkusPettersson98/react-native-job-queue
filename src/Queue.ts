@@ -132,11 +132,12 @@ export class Queue {
         workerName: string,
         payload: P,
         options = { attempts: 0, timeout: 0, priority: 0 },
+        id?: string,
         startQueue: boolean = true
     ) {
         const { attempts = 0, timeout = 0, priority = 0 } = options;
         const job: RawJob = {
-            id: Uuid.v4(),
+            id: id || Uuid.v4(),
             payload: JSON.stringify(payload || {}),
             metaData: JSON.stringify({ faileAttempts: 0, errors: [] }),
             active: FALSE,

@@ -28,6 +28,7 @@ public class JobQueue:NSObject{
     public func addJob(_ job:[String:Any]){
         if(db != nil){
             do{
+                removeJob(job)
                 try db?.add(job: Job.createJobFromDictionary(job: job))
             }catch{
                 print("Couln't add Job to Database: ",error)

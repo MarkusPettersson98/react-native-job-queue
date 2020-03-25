@@ -28,6 +28,7 @@ public class JobQueueModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void addJob(ReadableMap job) {
         JobDao dao = JobDatabase.getAppDatabase(this.reactContext).jobDao();
+        this.removeJob(job); // If there would be any duplicates behind, delete them
         dao.insert(ConversionHelper.getJobFromReadableMap(job));
     }
 
