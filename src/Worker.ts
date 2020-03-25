@@ -6,6 +6,7 @@ export interface WorkerOptions<P extends object> {
     onFailure?: (job: Job<P>, error: Error) => void;
     onCompletion?: (job: Job<P>) => void;
     concurrency?: number;
+    retries?: number;
 }
 /**
  * @typeparam P specifies the Type of the Job-Payload.
@@ -13,6 +14,7 @@ export interface WorkerOptions<P extends object> {
 export class Worker<P extends object> {
     public readonly name: string;
     public readonly concurrency: number;
+    public readonly retries: number;
 
     private executionCount: number;
     private executer: (payload: P) => Promise<any>;
@@ -35,11 +37,13 @@ export class Worker<P extends object> {
             onSuccess = (job: Job<P>) => {},
             onFailure = (job: Job<P>, error: Error) => {},
             onCompletion = (job: Job<P>) => {},
-            concurrency = 5
+            concurrency = 5,
+            retries = 0
         } = options;
 
         this.name = name;
         this.concurrency = concurrency;
+        this.retries = retries;
 
         this.executionCount = 0;
         this.executer = executer;
@@ -73,7 +77,9 @@ export class Worker<P extends object> {
         this.executionCount++;
         try {
             this.onStart(job);
-            if (timeout > 0) {
+            if (this.retries > 0) {
+                await this.executeWithRetry(job, this.retries, timeout, 0);
+            } else if (timeout > 0) {
                 await this.executeWithTimeout(job, timeout);
             } else {
                 await this.executer(payload);
@@ -94,5 +100,35 @@ export class Worker<P extends object> {
             }, timeout);
         });
         await Promise.race([timeoutPromise, this.executer(job.payload)]);
+    }
+
+    private wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    /**
+     * Try to execute a job. If that fails, retry after some time period
+     *
+     * @param {Job} job The job to execute with this worker
+     * @param retries Times to retry the job
+     * @param timeout Time between retries
+     */
+    private async executeWithRetry(job: Job<P>, retries: number, timeout: number, retryCount: number) {
+        const tmp = new Promise((resolve, reject) => {
+            return this.executer(job.payload)
+                .then(resolve)
+                .catch((reason) => {
+                    if (retryCount >= retries) {
+                        reject(
+                            new Error(`Job ${job.id} was rejected after ${retryCount} retries. Stack trace: ${reason}`)
+                        );
+                    }
+                    return this.wait(timeout).then(async () => {
+                        const tmp = this.executeWithRetry(job, retries, timeout, retryCount + 1)
+                            .then((result) => result)
+                            .catch((error) => error);
+                        return tmp;
+                    });
+                });
+        });
+        await tmp;
     }
 }
